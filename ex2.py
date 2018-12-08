@@ -1,6 +1,6 @@
 
 import math
-import decimal
+
 
 
 VOCABULARY_SIZE=300000
@@ -18,7 +18,7 @@ def main(dev_set_filename,test_set_filename,input_word,output_filename):
     train_list,validation_list=split_data_list(LIDSTONE_TRAIN_PERCENTAGE,events)
     train_freq = set_event_frequency(train_list)
     preprocessing(events,train_list,validation_list,train_freq,input_word,output_filename)
-    prep_min, best_lambda = get_best_preplixity(train_freq, train_list, 0, 2, 0.01, validation_list)
+    prep_min, best_lambda = get_best_preplixity(train_freq, train_list, 0.01, 2, 0.01, validation_list)
     lidstone_output(train_freq,train_list,validation_list,input_word,output_filename,prep_min,best_lambda)
     # Held out part
     T_list,H_list=split_data_list(HELD_TRAIN_PERCENTAGE,events)
@@ -28,13 +28,29 @@ def main(dev_set_filename,test_set_filename,input_word,output_filename):
     held_out_word_prob=calculate_held_out_prob(input_word,T_freq,H_freq,H_list,T_freq_event_dic)
     held_out_unseen_prob = calculate_held_out_prob("__unseen_word__",T_freq,H_freq,H_list,T_freq_event_dic)
     held_out_output(T_list,H_list,output_filename,held_out_word_prob,held_out_unseen_prob)
+    #check sum prob
+    event_prob=lidstone_calculation(train_freq,train_list,best_lambda)
+    print(check_event_probability_sum(event_prob))
+    print(check_held_out_prop_sum(T_freq,H_freq,H_list,T_freq_event_dic,held_out_unseen_prob))
+    # test set evalutation
+    test_lines=read_data_from_file(test_set_filename)
+    test_events=insert_events_to_list(test_lines)
+    prep_lid = calculate_lidstone_preplixity(train_freq, train_list, best_lambda, test_events)
+    prep_held = calcualte_held_out_preplexity(T_freq,H_freq,H_list,T_freq_event_dic,test_events)
+    best_prep= 'L'
+    if prep_held<prep_lid:
+        best_prep = 'H'
+    test_evaluation_output(output_filename,test_events,prep_lid,prep_held,best_prep)
+    write_table_result(output_filename,train_freq,train_list,event_prob,T_list,T_freq,H_freq,H_list,T_freq_event_dic)
+
+
 
 
 
 
 
 def init_output_file(dev_filename,test_file_name,input_word,output_filename):
-    with open(output_filename,'a') as f:
+    with open(output_filename,'w') as f:
         f.write("#Students	Aviad Fux	Adin Epstein	302593421	021890876\n")
         f.write("#Output1   " + dev_filename + "\n")
         f.write("#Output2   " + test_file_name + "\n")
@@ -50,12 +66,16 @@ def preprocessing(events,train_list,validation_list,train_dic,input_word,output_
     train_size= len(train_list)
     val_size= len(validation_list)
     train_dic_size= len(train_dic)
+    if input_word in train_dic:
+        freq=train_dic[input_word]
+    else:
+        freq=0
     with open(output_filename, 'a') as f:
         f.write("#Output7   " + str(events_size) + "\n")
         f.write("#Output8   " + str(val_size) + "\n")
         f.write("#Output9   " + str(train_size) + "\n")
         f.write("#Output10   " + str(train_dic_size) + "\n")
-        f.write("#Output11   " + str(train_dic[input_word]) + "\n")
+        f.write("#Output11   " + str(freq) + "\n")
     f.close()
 
 def lidstone_output(train_freq,train_list,validation_list,input_word,output_filename,prep_min,best_lambda):
@@ -88,6 +108,35 @@ def held_out_output(T_list,H_list,output_filename,word_prob,unseen_prob):
         f.write("Output24   " + str(unseen_prob) + "\n")
     f.close()
 
+def test_evaluation_output(output_filename,test_events,prep_lid,prep_held,best_prep):
+    with open(output_filename, 'a') as f:
+        f.write("Output25   " + str(len(test_events)) + "\n")
+        f.write("Output26   " + str(prep_lid) + "\n")
+        f.write("Output27   " + str(prep_held) + "\n")
+        f.write("Output28   " + best_prep + "\n")
+    f.close()
+
+def write_table_result(output_filename,train_freq,train_list,event_prob,T_list,T_freq,H_freq,H_list,t_freq_event_dic):
+    size_lid_train=len(train_list)
+    size_held_train=len(T_list)
+    f=open(output_filename, 'a')
+    f_lambda = get_smoothing_mle(event_prob, "__unseen_word__") * size_lid_train
+    f_H = calculate_held_out_prob("__unseen_word__",T_freq,H_freq,H_list,t_freq_event_dic)* size_held_train
+    N_0 = VOCABULARY_SIZE - (len(T_freq) - 1)
+    t_0= calculate_t0(T_freq,H_freq)
+    f.write(str(0) + "  " +  str(round(f_lambda,5)) + " " + str(round(f_H,5))+ "    " + str(N_0) + "    " + str(t_0) + "\n")
+    for i in range(1,9):
+        f_lambda= get_smoothing_mle(event_prob,find_word_with_r_freq(train_freq,i))*size_lid_train
+        f_H= calculate_held_out_prob(find_word_with_r_freq(T_freq,i),T_freq,H_freq,H_list,t_freq_event_dic)* size_held_train
+        t_r= calcualte_t_r(t_freq_event_dic,H_freq,i)
+        N_r = len(t_freq_event_dic[i])
+        f.write(str(i) + "  " +  str(round(f_lambda,5)) + " " + str(round(f_H,5))+ "    " + str(N_r) + "    " + str(t_r) +"\n")
+    f.close()
+
+def find_word_with_r_freq(freq_dic,r):
+    for event in freq_dic:
+        if freq_dic[event]==r:
+            return event
 
 def get_smoothing_mle(event_prop,input_word):
     if input_word in event_prop:
@@ -111,30 +160,46 @@ def check_event_probability_sum(event_probability):
         sum_prob+= event_probability[event]
     words_not_in_train= VOCABULARY_SIZE- len(event_probability)
     sum_prob += words_not_in_train * event_probability[WORD_NOT_IN_TRAIN]
+    print(sum_prob)
     if sum_prob==1:
         return True
     else:
         return False
 
-def calculate_preplixity(train_prob,validation_list):
+def check_held_out_prop_sum(T_freq,H_freq,H_list,t_freq_event_dic,unseen_word_prob):
+    sum=0
+    for freq in t_freq_event_dic:
+        prob= calculate_held_out_prob(t_freq_event_dic[freq][0],T_freq,H_freq,H_list,t_freq_event_dic)
+        N_r = len(t_freq_event_dic[freq])
+        sum+=N_r* prob
+    N_0 = VOCABULARY_SIZE -(len(T_freq)-1)
+    sum += N_0 * unseen_word_prob
+    print (sum)
+    if sum==1:
+        return True
+    else:
+        return False
+
+
+def calculate_preplixity_total_lidstone(train_prob,validation_list):
     multiple = 1
     for val in validation_list:
         if val in train_prob:
             p=train_prob[val]
         else:
             p=train_prob[WORD_NOT_IN_TRAIN]
-        multiple*= math.log(p)
+        multiple+= math.log(p)
     multiple /= -len(validation_list)
     multiple = 2** multiple
     return multiple
 
-def calculate_lidstone_preplixity(train_freq,train_list,lambda_var,validation_list):
+def calculate_lidstone_preplixity(train_freq,train_list,lambda_var,test_list):
     event_prob=lidstone_calculation(train_freq,train_list,lambda_var)
-    preplixity= calculate_preplixity(event_prob,validation_list)
+    preplixity= calculate_preplixity_total_lidstone(event_prob,test_list)
     return preplixity
 
 def get_best_preplixity(train_freq,train_list,min_lamba,max_lambda,jump,validatoin_list):
-    min_prep=5
+    min_prep=100000000
     best_lambda=0
     for l in frange(min_lamba,max_lambda,jump):
         prep=calculate_lidstone_preplixity(train_freq,train_list,l,validatoin_list)
@@ -145,7 +210,7 @@ def get_best_preplixity(train_freq,train_list,min_lamba,max_lambda,jump,validato
 
 def frange(x, y, jump):
     while x < y:
-        yield x
+        yield round(x,2)
         x += jump
 
 def get_freq_event_dic(data_freq):
@@ -178,7 +243,14 @@ def calculate_held_out_prob(input_word,T_freq,H_freq,H_list,t_freq_event_dic):
     prob = t_r / (N_r * len(H_list))
     return prob
 
-
+def calcualte_held_out_preplexity(T_freq,H_freq,H_list,t_freq_event_dic,test_list):
+    multiple =1
+    for event in test_list:
+        p=calculate_held_out_prob(event,T_freq,H_freq,H_list,t_freq_event_dic)
+        multiple += math.log(p)
+    multiple /= -len(test_list)
+    multiple = 2 ** multiple
+    return multiple
 
 def calculate_t0(T_freq,H_freq):
     sum=0
@@ -187,12 +259,13 @@ def calculate_t0(T_freq,H_freq):
             pass
         else:
             sum+= H_freq[event]
+    return sum
 
 def read_data_from_file(file_path):
     with open(file_path) as f:
         lines= f.readlines()
     f.close()
-    desired_lines=lines[3::4]
+    desired_lines=lines[2::4]
     return desired_lines
 
 
@@ -218,4 +291,8 @@ def set_event_frequency(data_list):
             event_frequency[event]+=1
         else:
             event_frequency[event]=1
+        event_frequency[WORD_NOT_IN_TRAIN]=0
     return event_frequency
+
+if __name__ == '__main__':
+    main("develop.txt","test.txt","honduras","output.txt")
