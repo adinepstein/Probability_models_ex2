@@ -125,7 +125,7 @@ def write_table_result(output_filename,train_freq,train_list,event_prob,T_list,T
     N_0 = VOCABULARY_SIZE - (len(T_freq) - 1)
     t_0= calculate_t0(T_freq,H_freq)
     f.write(str(0) + "  " +  str(round(f_lambda,5)) + " " + str(round(f_H,5))+ "    " + str(N_0) + "    " + str(t_0) + "\n")
-    for i in range(1,9):
+    for i in range(1,10):
         f_lambda= get_smoothing_mle(event_prob,find_word_with_r_freq(train_freq,i))*size_lid_train
         f_H= calculate_held_out_prob(find_word_with_r_freq(T_freq,i),T_freq,H_freq,H_list,t_freq_event_dic)* size_held_train
         t_r= calcualte_t_r(t_freq_event_dic,H_freq,i)
